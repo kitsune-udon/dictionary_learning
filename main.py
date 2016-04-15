@@ -55,29 +55,42 @@ def omp(Y, A, k, stopping_criteria):
     else:
         raise "invalid parameter"
 
-def dictionary_learning(Y, iter_num, sparsity, criteria, A0):
-    def sparse_coding(Y, A, k, criteria):
-        X = np.zeros((A.shape[1], Y.shape[1]))
+def dictionary_learning(Y, iter_num, sparsity, criteria, D0):
+    def sparse_coding(Y, D, k, criteria):
+        X = np.zeros((D.shape[1], Y.shape[1]))
         for i in xrange(Y.shape[1]):
             crit = criteria(i)(Y[:, i])
-            X[:, i] = omp(Y[:, i], A, k, crit).ravel()
+            X[:, i] = omp(Y[:, i], D, k, crit).ravel()
         return X
 
-    def update_dictionary(Y, A, X):
-        E_pre = Y - np.dot(A, X)
-        R = np.zeros(A.shape)
-        for j in xrange(A.shape[1]):
-            E = E_pre + np.dot(np.asmatrix(A[:,j]).transpose(), np.asmatrix(X[j]))
-            U,s,V = np.linalg.svd(E, full_matrices=False)
-            atom = np.asarray(U)[:, 0]
+    def update_dictionary(Y, D, X):
+        def restrict(indices, X):
+            R = np.zeros((X.shape[0], len(indices)))
+            for i in xrange(len(indices)):
+                R[:,i] = X[:,indices[i]].ravel()
+            return R
+        E_pre = Y - np.dot(D, X)
+        R = np.zeros(D.shape)
+        for j in xrange(D.shape[1]):
+            indices = []
+            for i in xrange(X.shape[1]):
+                if X[j,i] != 0.0:
+                    indices.append(i)
+            if len(indices) > 0:
+                E = E_pre + np.dot(np.asmatrix(D[:,j]).transpose(), np.asmatrix(X[j]))
+                E_restricted = restrict(indices, E)
+                U,s,V = np.linalg.svd(E_restricted, full_matrices=False)
+                atom = np.asarray(U)[:, 0]
+            else:
+                atom = D[:,j]
             R[:, j] = atom
         return R
 
-    A = np.array(A0)
+    D = np.array(D0)
     for i in xrange(iter_num):
-        X = sparse_coding(Y, A, sparsity, criteria)
-        A = update_dictionary(Y, A, X)
-    return A
+        X = sparse_coding(Y, D, sparsity, criteria)
+        D = update_dictionary(Y, D, X)
+    return D
 
 def omp_test():
     Y = np.array([2,3,4]).reshape((3,1)) # data
@@ -91,23 +104,23 @@ def omp_test():
 
 def dictionary_learning_test():
     def make_init_dict(n_dim, n_atoms):
-        A = np.random.rand(n_dim, n_atoms) - 0.5
-        #A = np.ones((n_dim, n_atoms))
+        D = np.random.rand(n_dim, n_atoms) - 0.5
+        #D = np.ones((n_dim, n_atoms))
         for i in xrange(n_atoms):
-            norm = np.linalg.norm(A[:, i])
+            norm = np.linalg.norm(D[:, i])
             if norm == 0.0:
                 raise "invalid atom"
             mult = 1.0 / norm
-            A[:, i] = mult * A[:, i]
-        return A
+            D[:, i] = mult * D[:, i]
+        return D
     def make_data(n_dim, n_samples):
         Y = np.random.rand(n_dim, n_samples) - 0.5
         return Y
-    def display_remain(Y, A):
+    def display_remain(Y, D):
         for i in xrange(Y.shape[1]):
-            x = omp(Y[:,i].reshape((n_dim,1)), A, sparsity, crit(0)(Y[:,i]))
+            x = omp(Y[:,i].reshape((n_dim,1)), D, sparsity, crit(0)(Y[:,i]))
             orig_norm = np.linalg.norm(Y[:,i])
-            diff = Y[:,i] - np.dot(A, x).ravel()
+            diff = Y[:,i] - np.dot(D, x).ravel()
             diff_norm = np.linalg.norm(diff)
             print diff_norm / orig_norm
     n_samples = 9
@@ -115,11 +128,11 @@ def dictionary_learning_test():
     n_dim = 5
     n_iter = 10
     sparsity = 2
-    A0 = make_init_dict(n_dim, n_atoms)
+    D0 = make_init_dict(n_dim, n_atoms)
     Y = make_data(n_dim, n_samples)
     crit = lambda idx: lambda Y: (lambda Y_norm: lambda r: np.linalg.norm(r) <= 0.1 * Y_norm)(np.linalg.norm(Y))
-    A = dictionary_learning(Y, n_iter, sparsity, crit, A0)
-    display_remain(Y, A)
+    D = dictionary_learning(Y, n_iter, sparsity, crit, D0)
+    display_remain(Y, D)
 
 #omp_test()
 np.random.seed(0)
